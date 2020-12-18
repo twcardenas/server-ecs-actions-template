@@ -1,0 +1,47 @@
+on:
+  workflow_dispatch:
+
+name: Deploy to Amazon ECS
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
+
+      - name: Fill in the new image ID in the Amazon ECS task definition
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: cb-app
+          image: docker.io/<TODO>/<TODO>:latest
+
+      - name: Deploy task
+        env:
+          TASK_DEFINITION: ${{ steps.task-def.outputs.task-definition }}
+          ECS_SERVICE: cb-service
+          ECS_CLUSTER: cb-cluster
+        run: |
+          TASK_DEFINITION_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://"$TASK_DEFINITION" \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+          echo "Next...."
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" \
+            --service "$ECS_SERVICE" \
+             --desired-count 1 \
+            --task-definition "$TASK_DEFINITION_ARN" \
+            --deployment-configuration minimumHealthyPercent=100 \
+            --force-new-deployment
